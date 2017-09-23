@@ -1,9 +1,23 @@
+use std::cell::RefCell;
 
-use glutin::{WindowBuilder, ContextBuilder, GlWindow, EventsLoop, GlProfile, Api, GlRequest};
+use glutin::{WindowBuilder, ContextBuilder, GlWindow, EventsLoop, GlProfile, Api, GlRequest,
+             GlContext};
+use gfx::Primitive;
+use gfx::traits::Factory;
+use gfx::pso::{PipelineState, PipelineInit, Descriptor};
+use gfx::state::Rasterizer;
 use gfx_window_glutin as gfx_window;
 
-use error::AppResult;
-use gfx_context::{ColorFormat, DepthFormat};
+use error::{ AppResult, AppError };
+use vfs::VFS;
+use gfx_context::{GfxContext, ColorFormat, DepthFormat, pipe, Vertex};
+
+const CORNFLOWER_BLUE: [f32; 4] = [0.4, 0.58, 0.93, 1.];
+const TRIANGLE: [Vertex; 3] = [
+    Vertex { pos: [-0.9, -0.5, 0.] },
+    Vertex { pos: [ 0.9, -0.5, 0.] },
+    Vertex { pos: [-0.9,  0.5, 0.] },
+];
 
 /// Configuration for Application. This will eventually be able to loaded from a
 /// toml configuration file
@@ -45,9 +59,12 @@ impl Default for AppConfig {
     }
 }
 
+/// Handles Application Context including events, window, filesystem, and graphics
 pub struct Context {
-    _window: GlWindow,
-    event_buffer: EventsLoop,
+    pub window: GlWindow,
+    pub event_buffer: EventsLoop,
+    pub gfx: GfxContext,
+    pub vfs: VFS,
 }
 
 impl Context {
@@ -62,32 +79,72 @@ impl Context {
             .with_gl(GlRequest::Specific(Api::OpenGl, (3, 3)))
             .with_vsync(false);
 
-        let (window, _, _, _, _) =
+        let (window, device, factory, color_view, depth_view) =
             gfx_window::init::<ColorFormat, DepthFormat>(window_builder, context, &event_buffer);
 
+        let gfx = GfxContext::new(RefCell::new(factory), device, color_view, depth_view);
+
+        let vfs = VFS::new()?;
+
         Ok(Context {
-            _window: window,
+            window,
             event_buffer,
+            vfs,
+            gfx,
         })
+    }
+
+    /// Tell the window to swap to the next rendering buffer.
+    pub fn swap_buffer(&mut self) -> AppResult<()> {
+        self.window.swap_buffers()?;
+        Ok(())
     }
 }
 
 pub fn run(ctx: &mut Context) -> AppResult<()> {
-    let ref mut event_buffer = ctx.event_buffer;
+    let program = GfxContext::load_and_compile_shaders(ctx, "basic.vert", "basic.frag")?;
+
+    let mut factory = match ctx.gfx.factory.try_borrow_mut() {
+        Ok(factory) => factory.clone(),
+        Err(_) => {
+            let err_location = format!("{}:{}", file!(), line!());
+            return Err(AppError::MemError(
+                "Mutable Borrow Error".into(),
+                err_location,
+            ));
+        }
+    };
+
+
+    let mut desc = Descriptor::new(Primitive::TriangleList, Rasterizer::new_fill());
+    let meta = pipe::new().link_to(&mut desc, program.get_info())?;
+
+    let pipeline_state = PipelineState::new(
+        factory.create_pipeline_state_raw(&program, &desc)?,
+        Primitive::TriangleList,
+        meta.clone());
+
+    let (vertex_buffer, slice) = ctx.gfx.generate_buffer(&TRIANGLE, ())?;
+    let data = ctx.gfx.data_pipeline(vertex_buffer);
 
     let mut running = true;
-
     while running {
-        use glutin::{ Event, WindowEvent };
-        event_buffer.poll_events(|event| {
-            match event {
-                Event::WindowEvent { event, .. } => match event {
+        ctx.swap_buffer()?;
+        ctx.gfx.flush();
+        ctx.gfx.clear(CORNFLOWER_BLUE);
+        ctx.gfx.draw(&pipeline_state, &data, &slice);
+        ctx.gfx.cleanup();
+
+        use glutin::{Event, WindowEvent};
+        &ctx.event_buffer.poll_events(|event| match event {
+            Event::WindowEvent { event, .. } => {
+                match event {
                     WindowEvent::Closed => running = false,
                     _ => (),
-                },
-                _ => (),
+                }
             }
-        })
+            _ => (),
+        });
     }
     Ok(())
 }
