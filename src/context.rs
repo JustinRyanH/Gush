@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use glutin::{WindowBuilder, ContextBuilder, GlWindow, EventsLoop, GlProfile, Api, GlRequest,
+use glutin::{self, WindowBuilder, ContextBuilder, GlWindow, EventsLoop, GlProfile, Api, GlRequest,
              GlContext};
 use gfx::Primitive;
 use gfx::traits::Factory;
@@ -8,15 +8,39 @@ use gfx::pso::{PipelineState, PipelineInit, Descriptor};
 use gfx::state::Rasterizer;
 use gfx_window_glutin as gfx_window;
 
-use error::{ AppResult, AppError };
+use gfx_context::GfxContext;
+use pipeline::{ColorFormat, DepthFormat, pipe, Vertex};
+use error::{AppResult, AppError};
 use vfs::VFS;
-use gfx_context::{GfxContext, ColorFormat, DepthFormat, pipe, Vertex};
+use texture::Texture;
 
 const CORNFLOWER_BLUE: [f32; 4] = [0.4, 0.58, 0.93, 1.];
-const TRIANGLE: [Vertex; 3] = [
-    Vertex { pos: [-0.9, -0.5, 0.] },
-    Vertex { pos: [ 0.9, -0.5, 0.] },
-    Vertex { pos: [-0.9,  0.5, 0.] },
+const SQUARE: [Vertex; 4] = [
+    Vertex {
+        pos: [ 0.5,  0.5, 0.],
+        uv: [1.0, 1.0],
+        color: [1., 0., 0., 1.],
+    },
+    Vertex {
+        pos: [0.5, -0.5, 0.],
+        uv: [1.0, 0.0],
+        color: [0., 1., 0., 1.],
+    },
+    Vertex {
+        pos: [-0.5, -0.5, 0.],
+        uv: [0.0, 0.0],
+        color: [0., 0., 1., 1.],
+    },
+    Vertex {
+        pos: [-0.5, 0.5, 0.],
+        uv: [0.0, 1.0],
+        color: [1., 1., 0., 1.],
+    },
+];
+
+const SQUARE_INDICES: &'static [u16] = &[
+    0, 1, 3,
+    1, 2, 3
 ];
 
 /// Configuration for Application. This will eventually be able to loaded from a
@@ -99,9 +123,21 @@ impl Context {
         self.window.swap_buffers()?;
         Ok(())
     }
+
+    pub fn resize(&mut self) {
+        let (color_view, depth_view) = gfx_window::new_views(&self.window);
+        self.gfx.color_view = color_view;
+        self.gfx.depth_view = depth_view;
+    }
+
+    pub fn next_events(&mut self) -> Vec<glutin::Event> {
+        let mut events = Vec::new();
+        self.event_buffer.poll_events(|evt| events.push(evt));
+        return events;
+    }
 }
 
-pub fn run(ctx: &mut Context) -> AppResult<()> {
+pub fn run(mut ctx: &mut Context) -> AppResult<()> {
     let program = GfxContext::load_and_compile_shaders(ctx, "basic.vert", "basic.frag")?;
 
     let mut factory = match ctx.gfx.factory.try_borrow_mut() {
@@ -115,17 +151,19 @@ pub fn run(ctx: &mut Context) -> AppResult<()> {
         }
     };
 
-
     let mut desc = Descriptor::new(Primitive::TriangleList, Rasterizer::new_fill());
     let meta = pipe::new().link_to(&mut desc, program.get_info())?;
 
     let pipeline_state = PipelineState::new(
         factory.create_pipeline_state_raw(&program, &desc)?,
         Primitive::TriangleList,
-        meta.clone());
+        meta.clone(),
+    );
 
-    let (vertex_buffer, slice) = ctx.gfx.generate_buffer(&TRIANGLE, ())?;
-    let data = ctx.gfx.data_pipeline(vertex_buffer);
+    let (vertex_buffer, slice) = ctx.gfx.generate_buffer(&SQUARE, SQUARE_INDICES)?;
+
+    let texture = Texture::load(ctx, "container.jpg")?;
+    let data = GfxContext::data_pipeline(ctx, vertex_buffer, Some(texture))?;
 
     let mut running = true;
     while running {
@@ -135,16 +173,28 @@ pub fn run(ctx: &mut Context) -> AppResult<()> {
         ctx.gfx.draw(&pipeline_state, &data, &slice);
         ctx.gfx.cleanup();
 
-        use glutin::{Event, WindowEvent};
-        &ctx.event_buffer.poll_events(|event| match event {
-            Event::WindowEvent { event, .. } => {
-                match event {
-                    WindowEvent::Closed => running = false,
-                    _ => (),
+        use glutin::{VirtualKeyCode, Event, WindowEvent};
+        let events = ctx.next_events();
+        for event in events {
+            match event {
+                Event::WindowEvent { event, .. } => {
+                    match event {
+                        WindowEvent::Closed => running = false,
+                        WindowEvent::Resized(_, _) => ctx.resize(),
+                        WindowEvent::KeyboardInput { input, .. } => {
+                            if let Some(key) = input.virtual_keycode {
+                                match key {
+                                    VirtualKeyCode::Escape => running = false,
+                                    _ => (),
+                                }
+                            }
+                        }
+                        _ => (),
+                    }
                 }
+                _ => (),
             }
-            _ => (),
-        });
+        }
     }
     Ok(())
 }

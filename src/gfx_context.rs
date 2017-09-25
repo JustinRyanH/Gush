@@ -5,25 +5,14 @@ use gfx::pso;
 use gfx::handle::Buffer;
 use gfx::traits::{ Factory, FactoryExt, Device };
 use gfx_device_gl as gfx_gl;
+use pipeline::{Vertex, DepthFormat, ColorFormat, pipe};
 
 
 use context::Context;
 use error::{AppResult, AppError};
+use texture::Texture;
 
 
-pub type ColorFormat = gfx::format::Srgba8;
-pub type DepthFormat = gfx::format::DepthStencil;
-
-gfx_defines!{
-    vertex Vertex {
-        pos: [f32; 3] = "aPos",
-    }
-
-    pipeline pipe {
-        vbuf: gfx::VertexBuffer<Vertex> = (),
-        out: gfx::RenderTarget<ColorFormat> = "Target0",
-    }
-}
 
 pub struct GfxContext {
     /// Used to send commands into gpu CommandBuffer
@@ -80,6 +69,19 @@ impl GfxContext {
         }
     }
 
+    pub fn get_factory_clone(&mut self) -> AppResult<gfx_gl::Factory> {
+        match self.factory.try_borrow_mut() {
+            Ok(factory) => Ok(factory.clone()),
+            Err(_) => {
+                let err_location = format!("{}:{}", file!(), line!());
+                return Err(AppError::MemError(
+                    "Mutable Borrow Error".into(),
+                    err_location,
+                ));
+            }
+        }
+    }
+
     /// Clears the screen to the supplied color
     pub fn clear(&mut self, color: [f32; 4]) {
         self.encoder.clear(&self.color_view, color);
@@ -100,26 +102,23 @@ impl GfxContext {
         AppResult<(Buffer<gfx_gl::Resources, Vertex>, gfx::Slice<gfx_gl::Resources>)>
         where I: gfx::IntoIndexBuffer<gfx_gl::Resources>
     {
-        let mut factory = match self.factory.try_borrow_mut() {
-            Ok(factory) => factory.clone(),
-            Err(_) => {
-                let err_location = format!("{}:{}", file!(), line!());
-                return Err(AppError::MemError(
-                    "Mutable Borrow Error".into(),
-                    err_location,
-                ));
-            }
-        };
-
+        let mut factory = self.get_factory_clone()?;
         Ok(factory.create_vertex_buffer_with_slice(vertices, indices))
     }
 
     /// Generates the Graphics Pipeline to used to send data to the GPU
-    pub fn data_pipeline(&mut self, buffer: Buffer<gfx_gl::Resources, Vertex>) -> pipe::Data<gfx_gl::Resources> {
-        pipe::Data {
+    pub fn data_pipeline(ctx: &mut Context, buffer: Buffer<gfx_gl::Resources, Vertex>, texture: Option<Texture>) -> AppResult<pipe::Data<gfx_gl::Resources>> {
+        let sampler = ctx.gfx.get_factory_clone()?.create_sampler_linear();
+        let tex: Texture = match texture {
+            Some(t) => t,
+            None => Texture::from_memory(ctx, 2, 2, &[0; 4])?,
+        };
+
+        Ok(pipe::Data {
             vbuf: buffer,
-            out: self.color_view.clone(),
-        }
+            out: ctx.gfx.color_view.clone(),
+            texture: (tex.resource_view, sampler),
+        })
     }
 
     /// Draws tell GPU to draw object

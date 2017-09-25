@@ -3,6 +3,7 @@ use std::result::Result;
 use std::error::Error;
 use std::string;
 use std::io;
+use image;
 
 use gfx_core;
 use glutin;
@@ -99,7 +100,23 @@ impl From<gfx::shade::core::CreateProgramError> for AppError {
 impl From<gfx_core::pso::CreationError> for AppError {
     fn from(e: gfx_core::pso::CreationError) -> AppError {
         AppError::GfxError(
-            format!("Shader Program Creation Error: {:?}", e)
+            format!("Creation Error: {:?}", e)
+        )
+    }
+}
+
+impl From<image::ImageError> for AppError {
+    fn from(e: image::ImageError) -> AppError {
+        AppError::VirtualFilesystemError(
+            format!("Error Reading Image: {:?}", e)
+        )
+    }
+}
+
+impl From<gfx_core::factory::CombinedError> for AppError {
+    fn from(e: gfx_core::factory::CombinedError) -> AppError {
+        AppError::GfxError(
+            format!("Error creating Texture: {:?}", e)
         )
     }
 }
@@ -108,7 +125,7 @@ impl From<gfx_core::pso::CreationError> for AppError {
 impl<'a> From<gfx::pso::InitError<&'a str>> for AppError {
     fn from(e: gfx::pso::InitError<&'a str>) -> AppError {
         AppError::GfxError(
-            format!("Shader Program Creation Error: {:?}", e)
+            format!("Pipeline Init Error: {:?}", e)
         )
     }
 }
