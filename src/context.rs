@@ -1,47 +1,21 @@
 use std::cell::RefCell;
+use std::time::Instant;
 
 use glutin::{self, WindowBuilder, ContextBuilder, GlWindow, EventsLoop, GlProfile, Api, GlRequest,
              GlContext};
-use gfx::Primitive;
-use gfx::traits::Factory;
-use gfx::pso::{PipelineState, PipelineInit, Descriptor};
-use gfx::state::Rasterizer;
 use gfx_window_glutin as gfx_window;
+use cgmath::{Matrix4, Transform, Deg};
 
-use gfx_context::GfxContext;
-use pipeline::{ColorFormat, DepthFormat, pipe, Vertex};
-use error::{AppResult, AppError};
+use graphics::{data_pipeline, create_simple_pipeline};
+use graphics::context::GfxContext;
+use graphics::pipeline::Vertex;
+use graphics::types::{ColorFormat, DepthFormat};
+use error::AppResult;
 use vfs::VFS;
 use texture::Texture;
 
 const CORNFLOWER_BLUE: [f32; 4] = [0.4, 0.58, 0.93, 1.];
-const SQUARE: [Vertex; 4] = [
-    Vertex {
-        pos: [ 0.5,  0.5, 0.],
-        uv: [1.0, 1.0],
-        color: [1., 0., 0., 1.],
-    },
-    Vertex {
-        pos: [0.5, -0.5, 0.],
-        uv: [1.0, 0.0],
-        color: [0., 1., 0., 1.],
-    },
-    Vertex {
-        pos: [-0.5, -0.5, 0.],
-        uv: [0.0, 0.0],
-        color: [0., 0., 1., 1.],
-    },
-    Vertex {
-        pos: [-0.5, 0.5, 0.],
-        uv: [0.0, 1.0],
-        color: [1., 1., 0., 1.],
-    },
-];
 
-const SQUARE_INDICES: &'static [u16] = &[
-    0, 1, 3,
-    1, 2, 3
-];
 
 /// Configuration for Application. This will eventually be able to loaded from a
 /// toml configuration file
@@ -78,7 +52,7 @@ impl Default for AppConfig {
     fn default() -> AppConfig {
         AppConfig {
             title: "Default Gush AppConfig".to_owned(),
-            dimensions: [400, 400],
+            dimensions: [400, 300],
         }
     }
 }
@@ -89,6 +63,8 @@ pub struct Context {
     pub event_buffer: EventsLoop,
     pub gfx: GfxContext,
     pub vfs: VFS,
+    pub epoch: Option<Instant>,
+    pub last_instant: Option<Instant>,
 }
 
 impl Context {
@@ -110,11 +86,15 @@ impl Context {
 
         let vfs = VFS::new()?;
 
+        let epoch = Instant::now();
+
         Ok(Context {
             window,
             event_buffer,
             vfs,
             gfx,
+            epoch: Some(epoch),
+            last_instant: None,
         })
     }
 
@@ -135,43 +115,137 @@ impl Context {
         self.event_buffer.poll_events(|evt| events.push(evt));
         return events;
     }
+
+    pub fn delta(&mut self) -> f64 {
+        let last = match self.last_instant {
+            Some(inst) => inst,
+            None => Instant::now(),
+        };
+        let now = Instant::now();
+        let delta = now - last;
+        self.last_instant = Some(now);
+        delta.as_secs() as f64 + (delta.subsec_nanos() as f64 * 1e-9)
+    }
+
+    pub fn since_program_epoch(&mut self) -> f64 {
+        match self.epoch {
+            Some(e) => {
+                let since = e.elapsed();
+                return since.as_secs() as f64 + (since.subsec_nanos() as f64 * 1e-9);
+            }
+            None => 0.,
+        }
+    }
 }
 
-pub fn run(mut ctx: &mut Context) -> AppResult<()> {
-    let program = GfxContext::load_and_compile_shaders(ctx, "basic.vert", "basic.frag")?;
+pub fn run(ctx: &mut Context) -> AppResult<()> {
 
-    let mut factory = match ctx.gfx.factory.try_borrow_mut() {
-        Ok(factory) => factory.clone(),
-        Err(_) => {
-            let err_location = format!("{}:{}", file!(), line!());
-            return Err(AppError::MemError(
-                "Mutable Borrow Error".into(),
-                err_location,
-            ));
-        }
-    };
+    let square: [Vertex; 24] = [
+        // top
+        Vertex::new([-1., -1., 1.], [0., 0.]),
+        Vertex::new([1., -1., 1.], [1., 0.]),
+        Vertex::new([1., 1., 1.], [1., 1.]),
+        Vertex::new([-1., 1., 1.], [0., 1.]),
+        // bottom
+        Vertex::new([-1., 1., -1.], [1., 0.]),
+        Vertex::new([1., 1., -1.], [0., 0.]),
+        Vertex::new([1., -1., -1.], [0., 1.]),
+        Vertex::new([-1., -1., -1.], [1., 1.]),
+        // right
+        Vertex::new([1., -1., -1.], [0., 0.]),
+        Vertex::new([1., 1., -1.], [1., 0.]),
+        Vertex::new([1., 1., 1.], [1., 1.]),
+        Vertex::new([1., -1., 1.], [0., 1.]),
+        // left
+        Vertex::new([-1., -1., -1.], [1., 0.]),
+        Vertex::new([-1., 1., -1.], [0., 0.]),
+        Vertex::new([-1., 1., 1.], [0., 1.]),
+        Vertex::new([-1., -1., 1.], [1., 1.]),
+        // front
+        Vertex::new([1., 1., -1.], [1., 0.]),
+        Vertex::new([-1., 1., -1.], [0., 0.]),
+        Vertex::new([-1., 1., 1.], [0., 1.]),
+        Vertex::new([1., 1., 1.], [1., 1.]),
+        // back
+        Vertex::new([1., -1., -1.], [0., 0.]),
+        Vertex::new([-1., -1., -1.], [1., 0.]),
+        Vertex::new([-1., -1., 1.], [1., 1.]),
+        Vertex::new([1., -1., 1.], [0., 1.]),
+    ];
+    const SQUARE_INDICES: &'static [u16] = &[
+        0,
+        1,
+        2,
+        2,
+        3,
+        0,
+        4,
+        5,
+        6,
+        6,
+        7,
+        4,
+        8,
+        9,
+        10,
+        10,
+        11,
+        8,
+        12,
+        13,
+        14,
+        14,
+        15,
+        12,
+        16,
+        17,
+        18,
+        18,
+        19,
+        16,
+        20,
+        21,
+        22,
+        22,
+        23,
+        20,
+    ];
 
-    let mut desc = Descriptor::new(Primitive::TriangleList, Rasterizer::new_fill());
-    let meta = pipe::new().link_to(&mut desc, program.get_info())?;
+    let cubes: &[[f32; 3]] = &[
+        [0., 0., 0.],
+        [2., 5., -15.],
+        [-1.5, -2.2, -2.5],
+        [-3.8, -2.0, -12.3],
+        [2.4, -0.4, -3.5],
+    ];
 
-    let pipeline_state = PipelineState::new(
-        factory.create_pipeline_state_raw(&program, &desc)?,
-        Primitive::TriangleList,
-        meta.clone(),
-    );
+    let pipeline_state = create_simple_pipeline(ctx, "basic.vert", "basic.frag")?;
 
-    let (vertex_buffer, slice) = ctx.gfx.generate_buffer(&SQUARE, SQUARE_INDICES)?;
+
+    let (vertex_buffer, slice) = ctx.gfx.generate_buffer(&square, SQUARE_INDICES)?;
 
     let texture = Texture::load(ctx, "container.jpg")?;
-    let data = GfxContext::data_pipeline(ctx, vertex_buffer, Some(texture))?;
+    let mut data = data_pipeline(ctx, vertex_buffer, Some(texture))?;
+    data.view = Matrix4::from_translation([0., 0.0, -10.0].into()).into();
 
     let mut running = true;
+
     while running {
         ctx.swap_buffer()?;
-        ctx.gfx.flush();
-        ctx.gfx.clear(CORNFLOWER_BLUE);
-        ctx.gfx.draw(&pipeline_state, &data, &slice);
+        ctx.gfx.clear(CORNFLOWER_BLUE, &data);
+        data.view = ( Matrix4::from( data.view ) *
+                      Matrix4::from_axis_angle(
+                          [0.25, 0.5, 0.].into(),
+                          Deg(( ctx.since_program_epoch() * 0.001 ) as f32)) ).into();
+        for index in 0..cubes.len() {
+            let angle = 20. * index as f32;
+            data.model = Matrix4::from_translation(cubes[index].into())
+                .concat(&Matrix4::from_axis_angle([1., 0.3, 0.5].into(), Deg(angle)))
+                .into();
+            ctx.gfx.draw(&pipeline_state, &data, &slice);
+        }
         ctx.gfx.cleanup();
+        ctx.gfx.flush();
 
         use glutin::{VirtualKeyCode, Event, WindowEvent};
         let events = ctx.next_events();

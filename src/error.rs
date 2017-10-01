@@ -112,6 +112,13 @@ impl From<image::ImageError> for AppError {
         )
     }
 }
+impl From<gfx::PipelineStateError<String>> for AppError {
+    fn from(e: gfx::PipelineStateError<String>) -> AppError {
+        AppError::GfxError(
+            format!("Error Initilzing Pipeline: {:?}", e)
+        )
+    }
+}
 
 impl From<gfx_core::factory::CombinedError> for AppError {
     fn from(e: gfx_core::factory::CombinedError) -> AppError {
@@ -120,7 +127,6 @@ impl From<gfx_core::factory::CombinedError> for AppError {
         )
     }
 }
-
 
 impl<'a> From<gfx::pso::InitError<&'a str>> for AppError {
     fn from(e: gfx::pso::InitError<&'a str>) -> AppError {

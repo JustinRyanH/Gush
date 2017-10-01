@@ -3,7 +3,7 @@ use gfx::traits::Factory;
 use gfx_device_gl as gfx_gl;
 use gfx::texture;
 
-use pipeline::ColorFormat;
+use graphics::types::ColorFormat;
 use error::{AppResult};
 use context::Context;
 use image;

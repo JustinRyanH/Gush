@@ -1,26 +1,25 @@
 use std::cell::RefCell;
 
 use gfx;
-use gfx::pso;
-use gfx::handle::Buffer;
+use gfx::state::Rasterizer;
+use gfx::pso::Descriptor;
 use gfx::traits::{ Factory, FactoryExt, Device };
 use gfx_device_gl as gfx_gl;
-use pipeline::{Vertex, DepthFormat, ColorFormat, pipe};
+use graphics::pipeline::{Vertex};
+use graphics::types::{self, DepthFormat, ColorFormat};
 
 
 use context::Context;
 use error::{AppResult, AppError};
-use texture::Texture;
-
-
 
 pub struct GfxContext {
     /// Used to send commands into gpu CommandBuffer
-    pub encoder: gfx::Encoder<gfx_gl::Resources, gfx_gl::CommandBuffer>,
+    pub encoder: types::EncoderOGL,
     pub factory: RefCell<gfx_gl::Factory>,
     pub device: gfx_gl::Device,
-    pub color_view: gfx::handle::RenderTargetView<gfx_gl::Resources, ColorFormat>,
-    pub depth_view: gfx::handle::DepthStencilView<gfx_gl::Resources, DepthFormat>,
+    pub color_view: types::ColorViewOGL,
+    pub depth_view: types::DepthViewOGL,
+    pub default_descriptor: Descriptor,
 }
 
 impl GfxContext {
@@ -32,6 +31,7 @@ impl GfxContext {
         depth_view: gfx::handle::DepthStencilView<gfx_gl::Resources, DepthFormat>,
     ) -> GfxContext {
         let encoder = factory.borrow_mut().create_command_buffer().into();
+        let default_descriptor = Descriptor::new(gfx::Primitive::TriangleList, Rasterizer::new_fill());
 
         GfxContext {
             factory,
@@ -39,6 +39,7 @@ impl GfxContext {
             encoder,
             color_view,
             depth_view,
+            default_descriptor,
         }
     }
 
@@ -47,7 +48,7 @@ impl GfxContext {
         ctx: &mut Context,
         vertex: &str,
         fragment: &str,
-    ) -> AppResult<gfx::handle::Program<gfx_gl::Resources>> {
+    ) -> AppResult<types::GpuProgram> {
         let mut factory = match ctx.gfx.factory.try_borrow_mut() {
             Ok(factory) => factory.clone(),
             Err(_) => {
@@ -83,8 +84,9 @@ impl GfxContext {
     }
 
     /// Clears the screen to the supplied color
-    pub fn clear(&mut self, color: [f32; 4]) {
+    pub fn clear(&mut self, color: [f32; 4] , data: &types::PipelineData) {
         self.encoder.clear(&self.color_view, color);
+        self.encoder.clear_depth(&data.out_depth, 1.);
     }
 
     /// Cleans ununsed resources from the GPU
@@ -99,32 +101,18 @@ impl GfxContext {
 
     /// Loads vertices into a GFX buffer for the GPU
     pub fn generate_buffer<I>(&mut self, vertices: &[Vertex], indices: I) ->
-        AppResult<(Buffer<gfx_gl::Resources, Vertex>, gfx::Slice<gfx_gl::Resources>)>
+        AppResult<(types::GpuBuffer<Vertex>, types::Slice)>
         where I: gfx::IntoIndexBuffer<gfx_gl::Resources>
     {
         let mut factory = self.get_factory_clone()?;
         Ok(factory.create_vertex_buffer_with_slice(vertices, indices))
     }
 
-    /// Generates the Graphics Pipeline to used to send data to the GPU
-    pub fn data_pipeline(ctx: &mut Context, buffer: Buffer<gfx_gl::Resources, Vertex>, texture: Option<Texture>) -> AppResult<pipe::Data<gfx_gl::Resources>> {
-        let sampler = ctx.gfx.get_factory_clone()?.create_sampler_linear();
-        let tex: Texture = match texture {
-            Some(t) => t,
-            None => Texture::from_memory(ctx, 2, 2, &[0; 4])?,
-        };
-
-        Ok(pipe::Data {
-            vbuf: buffer,
-            out: ctx.gfx.color_view.clone(),
-            texture: (tex.resource_view, sampler),
-        })
-    }
 
     /// Draws tell GPU to draw object
-    pub fn draw(&mut self, pipeline: &pso::PipelineState<gfx_gl::Resources, pipe::Meta>,
-                data: &pipe::Data<gfx_gl::Resources>,
-                indices: &gfx::Slice<gfx_gl::Resources>) {
+    pub fn draw(&mut self, pipeline: &types::PipelineState<types::PipelineMetadata>,
+                data: &types::PipelineData,
+                indices: &types::Slice) {
         self.encoder.draw(indices, pipeline, data)
     }
 }
