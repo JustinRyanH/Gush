@@ -13,3 +13,4 @@ pub mod context;
 pub mod vfs;
 pub mod texture;
 pub mod graphics;
+pub mod camera;

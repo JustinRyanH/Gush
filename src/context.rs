@@ -11,6 +11,7 @@ use graphics::context::GfxContext;
 use graphics::pipeline::Vertex;
 use graphics::types::{ColorFormat, DepthFormat};
 use error::AppResult;
+use camera::Camera;
 use vfs::VFS;
 use texture::Texture;
 
@@ -63,6 +64,7 @@ pub struct Context {
     pub event_buffer: EventsLoop,
     pub gfx: GfxContext,
     pub vfs: VFS,
+    pub camera: Camera,
     pub epoch: Option<Instant>,
     pub last_instant: Option<Instant>,
 }
@@ -85,6 +87,7 @@ impl Context {
         let gfx = GfxContext::new(RefCell::new(factory), device, color_view, depth_view);
 
         let vfs = VFS::new()?;
+        let epoch = Instant::now();
 
         let epoch = Instant::now();
 
@@ -93,6 +96,7 @@ impl Context {
             event_buffer,
             vfs,
             gfx,
+            camera: Camera::new(),
             epoch: Some(epoch),
             last_instant: None,
         })
@@ -214,8 +218,8 @@ pub fn run(ctx: &mut Context) -> AppResult<()> {
     let cubes: &[[f32; 3]] = &[
         [0., 0., 0.],
         [2., 5., -15.],
-        [-1.5, -2.2, -2.5],
-        [-3.8, -2.0, -12.3],
+        [-3.5, -4.2, -4.5],
+        [-6.8, -4.0, -12.3],
         [2.4, -0.4, -3.5],
     ];
 
@@ -226,22 +230,22 @@ pub fn run(ctx: &mut Context) -> AppResult<()> {
 
     let texture = Texture::load(ctx, "container.jpg")?;
     let mut data = data_pipeline(ctx, vertex_buffer, Some(texture))?;
-    data.view = Matrix4::from_translation([0., 0.0, -10.0].into()).into();
+
+    let radius = 20.0;
+    data.view = ctx.camera.as_matrix().into();
 
     let mut running = true;
 
     while running {
         ctx.swap_buffer()?;
         ctx.gfx.clear(CORNFLOWER_BLUE, &data);
-        data.view = ( Matrix4::from( data.view ) *
-                      Matrix4::from_axis_angle(
-                          [0.25, 0.5, 0.].into(),
-                          Deg(( ctx.since_program_epoch() * 0.001 ) as f32)) ).into();
+        let cam_x = (ctx.since_program_epoch().sin() * radius) as f32;
+        let cam_y = (ctx.since_program_epoch().cos() * radius) as f32;
+        ctx.camera.move_to([cam_x, 0., cam_y].into());
+        data.view = ctx.camera.as_matrix().into();
         for index in 0..cubes.len() {
             let angle = 20. * index as f32;
-            data.model = Matrix4::from_translation(cubes[index].into())
-                .concat(&Matrix4::from_axis_angle([1., 0.3, 0.5].into(), Deg(angle)))
-                .into();
+            data.model = (Matrix4::from_translation(cubes[index].into()) * &Matrix4::from_axis_angle([1., 0.3, 0.5].into(), Deg(angle))).into();
             ctx.gfx.draw(&pipeline_state, &data, &slice);
         }
         ctx.gfx.cleanup();
