@@ -26,3 +26,9 @@ impl Vertex {
         Vertex { pos, uv }
     }
 }
+
+impl Default for Vertex {
+    fn default() -> Vertex {
+        Vertex { pos: [0., 0., 0.], uv: [0., 0.] }
+    }
+}

@@ -1,7 +1,11 @@
 use std::fs;
-use std::io::Read;
+use std::io::{Read};
 use std::path;
 use std::env;
+
+use gltf::Gltf;
+use gltf_importer::{self, Buffers};
+use gltf_importer::config::ValidationStrategy;
 
 use error::{AppResult, AppError};
 
@@ -12,14 +16,20 @@ pub struct VFS {
 fn assert_directory_exists(current_dir: &path::PathBuf, directory: &str) -> AppResult<()> {
     let assets = match fs::metadata(current_dir.join(directory)) {
         Ok(a) => a,
-        Err(_) => return Err(AppError::InitError(
-            format!("{} directory is not located in: {:?}", directory, current_dir).into()
-        )),
+        Err(_) => {
+            return Err(AppError::InitError(
+                format!(
+                    "{} directory is not located in: {:?}",
+                    directory,
+                    current_dir
+                ).into(),
+            ))
+        }
     };
 
     if !assets.is_dir() {
         return Err(AppError::InitError(
-            format!("{} is not a directory", directory).into()
+            format!("{} is not a directory", directory).into(),
         ));
     }
     Ok(())
@@ -52,10 +62,16 @@ impl VFS {
             Err(e) => Err(e.into()),
         }
     }
-
+    
     /// Load binary files from asset directory
     pub fn load_binary_asset(&self, file_name: &str) -> AppResult<Vec<u8>> {
         let fullpath = self.current_dir.join("assets").join(file_name);
         self.load_file(fullpath)
+    }
+
+    pub fn load_gltf(&self, file_name: &str) -> AppResult<(Gltf, Buffers)> {
+        let fullpath = self.current_dir.join("assets").join(file_name);
+        let config = gltf_importer::Config { validation_strategy: ValidationStrategy::Complete };
+        Ok(gltf_importer::import_with_config(fullpath, config)?)
     }
 }

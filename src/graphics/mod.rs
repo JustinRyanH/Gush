@@ -1,8 +1,10 @@
 pub mod types;
 pub mod context;
 pub mod pipeline;
+pub mod mesh;
 
 use gfx;
+use gfx::texture::{ self, SamplerInfo };
 use gfx::traits::{Factory, FactoryExt};
 use cgmath::{self, Deg, Transform};
 
@@ -48,7 +50,10 @@ pub fn data_pipeline(
     buffer: types::GpuBuffer<Vertex>,
     texture: Option<Texture>,
 ) -> AppResult<types::PipelineData> {
-    let sampler = ctx.gfx.get_factory_clone()?.create_sampler_linear();
+    let sampler = ctx.gfx.get_factory_clone()?.create_sampler(SamplerInfo::new(
+        texture::FilterMethod::Trilinear,
+        texture::WrapMode::Tile,
+    ));
     let tex: Texture = match texture {
         Some(t) => t,
         None => Texture::from_memory(ctx, 2, 2, &[0; 4])?,

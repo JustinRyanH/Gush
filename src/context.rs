@@ -4,16 +4,13 @@ use std::time::Instant;
 use glutin::{self, WindowBuilder, ContextBuilder, GlWindow, EventsLoop, GlProfile, Api, GlRequest,
              GlContext};
 use gfx_window_glutin as gfx_window;
-use cgmath::{Matrix4, Transform, Deg};
-
 use graphics::{data_pipeline, create_simple_pipeline};
 use graphics::context::GfxContext;
-use graphics::pipeline::Vertex;
 use graphics::types::{ColorFormat, DepthFormat};
+use graphics::mesh::SimpleMesh;
 use error::AppResult;
 use camera::Camera;
 use vfs::VFS;
-use texture::Texture;
 
 const CORNFLOWER_BLUE: [f32; 4] = [0.4, 0.58, 0.93, 1.];
 
@@ -89,8 +86,6 @@ impl Context {
         let vfs = VFS::new()?;
         let epoch = Instant::now();
 
-        let epoch = Instant::now();
-
         Ok(Context {
             window,
             event_buffer,
@@ -143,95 +138,14 @@ impl Context {
 }
 
 pub fn run(ctx: &mut Context) -> AppResult<()> {
-
-    let square: [Vertex; 24] = [
-        // top
-        Vertex::new([-1., -1., 1.], [0., 0.]),
-        Vertex::new([1., -1., 1.], [1., 0.]),
-        Vertex::new([1., 1., 1.], [1., 1.]),
-        Vertex::new([-1., 1., 1.], [0., 1.]),
-        // bottom
-        Vertex::new([-1., 1., -1.], [1., 0.]),
-        Vertex::new([1., 1., -1.], [0., 0.]),
-        Vertex::new([1., -1., -1.], [0., 1.]),
-        Vertex::new([-1., -1., -1.], [1., 1.]),
-        // right
-        Vertex::new([1., -1., -1.], [0., 0.]),
-        Vertex::new([1., 1., -1.], [1., 0.]),
-        Vertex::new([1., 1., 1.], [1., 1.]),
-        Vertex::new([1., -1., 1.], [0., 1.]),
-        // left
-        Vertex::new([-1., -1., -1.], [1., 0.]),
-        Vertex::new([-1., 1., -1.], [0., 0.]),
-        Vertex::new([-1., 1., 1.], [0., 1.]),
-        Vertex::new([-1., -1., 1.], [1., 1.]),
-        // front
-        Vertex::new([1., 1., -1.], [1., 0.]),
-        Vertex::new([-1., 1., -1.], [0., 0.]),
-        Vertex::new([-1., 1., 1.], [0., 1.]),
-        Vertex::new([1., 1., 1.], [1., 1.]),
-        // back
-        Vertex::new([1., -1., -1.], [0., 0.]),
-        Vertex::new([-1., -1., -1.], [1., 0.]),
-        Vertex::new([-1., -1., 1.], [1., 1.]),
-        Vertex::new([1., -1., 1.], [0., 1.]),
-    ];
-    const SQUARE_INDICES: &'static [u16] = &[
-        0,
-        1,
-        2,
-        2,
-        3,
-        0,
-        4,
-        5,
-        6,
-        6,
-        7,
-        4,
-        8,
-        9,
-        10,
-        10,
-        11,
-        8,
-        12,
-        13,
-        14,
-        14,
-        15,
-        12,
-        16,
-        17,
-        18,
-        18,
-        19,
-        16,
-        20,
-        21,
-        22,
-        22,
-        23,
-        20,
-    ];
-
-    let cubes: &[[f32; 3]] = &[
-        [0., 0., 0.],
-        [2., 5., -15.],
-        [-3.5, -4.2, -4.5],
-        [-6.8, -4.0, -12.3],
-        [2.4, -0.4, -3.5],
-    ];
-
     let pipeline_state = create_simple_pipeline(ctx, "basic.vert", "basic.frag")?;
 
+    let mesh = SimpleMesh::from_gltf(ctx, "Cube.gltf")?;
+    let (vertex_buffer, slice) = mesh.generate_buffer(ctx)?;
 
-    let (vertex_buffer, slice) = ctx.gfx.generate_buffer(&square, SQUARE_INDICES)?;
 
-    let texture = Texture::load(ctx, "container.jpg")?;
-    let mut data = data_pipeline(ctx, vertex_buffer, Some(texture))?;
-
-    let radius = 20.0;
+    let mut data = data_pipeline(ctx, vertex_buffer, mesh.texture)?;
+    let radius = 5.0;
     data.view = ctx.camera.as_matrix().into();
 
     let mut running = true;
@@ -243,11 +157,7 @@ pub fn run(ctx: &mut Context) -> AppResult<()> {
         let cam_y = (ctx.since_program_epoch().cos() * radius) as f32;
         ctx.camera.move_to([cam_x, 0., cam_y].into());
         data.view = ctx.camera.as_matrix().into();
-        for index in 0..cubes.len() {
-            let angle = 20. * index as f32;
-            data.model = (Matrix4::from_translation(cubes[index].into()) * &Matrix4::from_axis_angle([1., 0.3, 0.5].into(), Deg(angle))).into();
-            ctx.gfx.draw(&pipeline_state, &data, &slice);
-        }
+        ctx.gfx.draw(&pipeline_state, &data, &slice);
         ctx.gfx.cleanup();
         ctx.gfx.flush();
 

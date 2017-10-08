@@ -3,7 +3,9 @@ use std::result::Result;
 use std::error::Error;
 use std::string;
 use std::io;
+
 use image;
+use gltf_importer;
 
 use gfx_core;
 use glutin;
@@ -124,6 +126,14 @@ impl From<gfx_core::factory::CombinedError> for AppError {
     fn from(e: gfx_core::factory::CombinedError) -> AppError {
         AppError::GfxError(
             format!("Error creating Texture: {:?}", e)
+        )
+    }
+}
+
+impl From<gltf_importer::Error> for AppError {
+    fn from(e: gltf_importer::Error) -> AppError {
+        AppError::VirtualFilesystemError(
+            format!("Error parsing gltf file: {:?}", e)
         )
     }
 }
