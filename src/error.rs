@@ -5,6 +5,7 @@ use std::string;
 use std::io;
 
 use winit;
+use glium;
 
 use image;
 use gltf_importer;
@@ -87,6 +88,18 @@ impl From<gltf_importer::Error> for AppError {
 
 impl From<winit::CreationError> for AppError {
     fn from(e: winit::CreationError) -> AppError {
+        AppError::InitError(format!("Failed to Create Window: {:?}", e))
+    }
+}
+
+impl From<glium::SwapBuffersError> for AppError {
+    fn from(e: glium::SwapBuffersError) -> AppError {
+        AppError::GfxError(format!("Failed to Create Window: {:?}", e))
+    }
+}
+
+impl From<glium::backend::glutin::DisplayCreationError> for AppError {
+    fn from(e: glium::backend::glutin::DisplayCreationError) -> AppError {
         AppError::InitError(format!("Failed to Create Window: {:?}", e))
     }
 }

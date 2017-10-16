@@ -1,4 +1,5 @@
 use winit;
+use glium;
 
 use error::AppResult;
 use vfs::VFS;
@@ -47,18 +48,21 @@ impl Default for AppConfig {
 /// Handles Application Context including events, window, filesystem, and graphics
 pub struct Context {
     pub event_buffer: winit::EventsLoop,
-    pub window: winit::Window,
+    pub window: glium::Display,
     pub vfs: VFS,
 }
 
 impl Context {
     pub fn from_app_builder(builder: &AppConfig) -> AppResult<Context> {
+        use glium::glutin;
         let event_buffer = winit::EventsLoop::new();
 
-        let window = winit::WindowBuilder::new()
+        let builder = winit::WindowBuilder::new()
             .with_title(builder.title.to_owned())
-            .with_dimensions(builder.dimensions[0], builder.dimensions[1])
-            .build(&event_buffer)?;
+            .with_dimensions(builder.dimensions[0], builder.dimensions[1]);
+        let display_context = glutin::ContextBuilder::new();
+        let window = glium::Display::new(builder, display_context, &event_buffer)?;
+
         let vfs = VFS::new()?;
         Ok(Context {
             event_buffer,

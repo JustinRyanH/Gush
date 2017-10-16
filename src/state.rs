@@ -1,3 +1,5 @@
+use glium::Surface;
+
 use context::Context;
 use error::AppResult;
 
@@ -27,10 +29,12 @@ pub fn run(ctx: &mut Context, engine: &mut StateEngine) -> AppResult<()> {
     engine.start(ctx)?;
     let mut running = true;
     while running {
+        let mut target = ctx.window.draw();
+        target.clear_color(0., 0., 1., 1.);
+        target.finish()?;
         engine.draw(ctx)?;
 
         use winit::{Event, WindowEvent};
-
         let events = ctx.next_events();
         for event in events {
             match event {
