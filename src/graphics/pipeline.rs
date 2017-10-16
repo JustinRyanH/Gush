@@ -1,7 +1,8 @@
 use gfx;
+use gfx::traits::FactoryExt;
 
-use graphics::types::{ColorFormat, DepthFormat};
-
+use graphics::types::{ColorFormat, DepthFormat, GpuFactory, PipelineState, Metadata};
+use error::AppResult;
 
 
 gfx_defines!{
@@ -31,4 +32,13 @@ impl Default for Vertex {
     fn default() -> Vertex {
         Vertex { pos: [0., 0., 0.], uv: [0., 0.] }
     }
+}
+
+pub fn describe_gpu_pipeline(
+    factory: &mut GpuFactory,
+    vertex: &[u8],
+    fragment: &[u8],
+) -> AppResult<PipelineState<Metadata>> {
+
+    Ok(factory.create_pipeline_simple(vertex, fragment, gpu_pipeline::new())?)
 }

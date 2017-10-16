@@ -4,15 +4,12 @@ use std::time::Instant;
 use glutin::{self, WindowBuilder, ContextBuilder, GlWindow, EventsLoop, GlProfile, Api, GlRequest,
              GlContext};
 use gfx_window_glutin as gfx_window;
-use graphics::{data_pipeline, create_simple_pipeline};
 use graphics::context::GfxContext;
 use graphics::types::{ColorFormat, DepthFormat};
-use graphics::mesh::SimpleMesh;
 use error::AppResult;
 use camera::Camera;
 use vfs::VFS;
-
-const CORNFLOWER_BLUE: [f32; 4] = [0.4, 0.58, 0.93, 1.];
+use state::StateEngine;
 
 
 /// Configuration for Application. This will eventually be able to loaded from a
@@ -81,11 +78,9 @@ impl Context {
         let (window, device, factory, color_view, depth_view) =
             gfx_window::init::<ColorFormat, DepthFormat>(window_builder, context, &event_buffer);
 
-        let gfx = GfxContext::new(RefCell::new(factory), device, color_view, depth_view);
-
+        let gfx = GfxContext::new(RefCell::new(factory), device, color_view, depth_view)?;
         let vfs = VFS::new()?;
         let epoch = Instant::now();
-
         Ok(Context {
             window,
             event_buffer,
@@ -137,31 +132,17 @@ impl Context {
     }
 }
 
-pub fn run(ctx: &mut Context) -> AppResult<()> {
-    let pipeline_state = create_simple_pipeline(ctx, "basic.vert", "basic.frag")?;
-
-    let mesh = SimpleMesh::from_gltf(ctx, "Cube.gltf")?;
-    let (vertex_buffer, slice) = mesh.generate_buffer(ctx)?;
-
-
-    let mut data = data_pipeline(ctx, vertex_buffer, mesh.texture)?;
-    let radius = 5.0;
-    data.view = ctx.camera.as_matrix().into();
-
+pub fn run(ctx: &mut Context, engine: &mut StateEngine) -> AppResult<()> {
+    engine.start(ctx)?;
     let mut running = true;
-
     while running {
-        ctx.swap_buffer()?;
-        ctx.gfx.clear(CORNFLOWER_BLUE, &data);
-        let cam_x = (ctx.since_program_epoch().sin() * radius) as f32;
-        let cam_y = (ctx.since_program_epoch().cos() * radius) as f32;
-        ctx.camera.move_to([cam_x, 0., cam_y].into());
-        data.view = ctx.camera.as_matrix().into();
-        ctx.gfx.draw(&pipeline_state, &data, &slice);
-        ctx.gfx.cleanup();
-        ctx.gfx.flush();
+        engine.draw(ctx)?;
 
-        use glutin::{VirtualKeyCode, Event, WindowEvent};
+        ctx.swap_buffer()?;
+        ctx.gfx.flush();
+        ctx.gfx.cleanup();
+        use glutin::{Event, WindowEvent};
+
         let events = ctx.next_events();
         for event in events {
             match event {
@@ -169,21 +150,15 @@ pub fn run(ctx: &mut Context) -> AppResult<()> {
                     match event {
                         WindowEvent::Closed => running = false,
                         WindowEvent::Resized(_, _) => ctx.resize(),
-                        WindowEvent::KeyboardInput { input, .. } => {
-                            if let Some(key) = input.virtual_keycode {
-                                match key {
-                                    VirtualKeyCode::Escape => running = false,
-                                    _ => (),
-                                }
-                            }
-                        }
                         _ => (),
                     }
                 }
                 _ => (),
             }
         }
+        engine.update(ctx)?;
     }
+    engine.stop(ctx)?;
     Ok(())
 }
 

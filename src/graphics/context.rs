@@ -3,10 +3,11 @@ use std::cell::RefCell;
 use gfx;
 use gfx::state::Rasterizer;
 use gfx::pso::Descriptor;
-use gfx::traits::{ Factory, FactoryExt, Device };
+use gfx::traits::{Factory, FactoryExt, Device};
 use gfx_device_gl as gfx_gl;
-use graphics::pipeline::{Vertex};
-use graphics::types::{self, DepthFormat, ColorFormat};
+use graphics::pipeline::{Vertex, describe_gpu_pipeline};
+use graphics::types::{self, DepthFormat, ColorFormat, PipelineState, Metadata};
+use graphics::static_shaders::{FRAG_SHADER, VERT_SHADER};
 
 
 use context::Context;
@@ -20,6 +21,7 @@ pub struct GfxContext {
     pub color_view: types::ColorViewOGL,
     pub depth_view: types::DepthViewOGL,
     pub default_descriptor: Descriptor,
+    pub pso: PipelineState<Metadata>,
 }
 
 impl GfxContext {
@@ -29,18 +31,26 @@ impl GfxContext {
         device: gfx_gl::Device,
         color_view: gfx::handle::RenderTargetView<gfx_gl::Resources, ColorFormat>,
         depth_view: gfx::handle::DepthStencilView<gfx_gl::Resources, DepthFormat>,
-    ) -> GfxContext {
+    ) -> AppResult<GfxContext> {
         let encoder = factory.borrow_mut().create_command_buffer().into();
-        let default_descriptor = Descriptor::new(gfx::Primitive::TriangleList, Rasterizer::new_fill());
+        let default_descriptor =
+            Descriptor::new(gfx::Primitive::TriangleList, Rasterizer::new_fill());
 
-        GfxContext {
+        let pso = describe_gpu_pipeline(
+            &mut factory.borrow_mut().clone(),
+            VERT_SHADER.as_bytes(),
+            FRAG_SHADER.as_bytes(),
+        )?;
+
+        Ok(GfxContext {
             factory,
             device,
             encoder,
             color_view,
             depth_view,
             default_descriptor,
-        }
+            pso,
+        })
     }
 
     /// Load shaders from shader directory and generate a shaderset to use
@@ -84,8 +94,11 @@ impl GfxContext {
     }
 
     /// Clears the screen to the supplied color
-    pub fn clear(&mut self, color: [f32; 4] , data: &types::PipelineData) {
+    pub fn clear(&mut self, color: [f32; 4]) {
         self.encoder.clear(&self.color_view, color);
+    }
+
+    pub fn clear_depth(&mut self, data: &types::PipelineData) {
         self.encoder.clear_depth(&data.out_depth, 1.);
     }
 
@@ -100,9 +113,13 @@ impl GfxContext {
     }
 
     /// Loads vertices into a GFX buffer for the GPU
-    pub fn generate_buffer<I>(&mut self, vertices: &[Vertex], indices: I) ->
-        AppResult<(types::GpuBuffer<Vertex>, types::Slice)>
-        where I: gfx::IntoIndexBuffer<gfx_gl::Resources>
+    pub fn generate_buffer<I>(
+        &mut self,
+        vertices: &[Vertex],
+        indices: I,
+    ) -> AppResult<(types::GpuBuffer<Vertex>, types::Slice)>
+    where
+        I: gfx::IntoIndexBuffer<gfx_gl::Resources>,
     {
         let mut factory = self.get_factory_clone()?;
         Ok(factory.create_vertex_buffer_with_slice(vertices, indices))
@@ -110,9 +127,12 @@ impl GfxContext {
 
 
     /// Draws tell GPU to draw object
-    pub fn draw(&mut self, pipeline: &types::PipelineState<types::PipelineMetadata>,
-                data: &types::PipelineData,
-                indices: &types::Slice) {
+    pub fn draw(
+        &mut self,
+        pipeline: &types::PipelineState<types::Metadata>,
+        data: &types::PipelineData,
+        indices: &types::Slice,
+    ) {
         self.encoder.draw(indices, pipeline, data)
     }
 }
