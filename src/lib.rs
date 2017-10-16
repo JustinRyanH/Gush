@@ -7,8 +7,9 @@ extern crate gltf;
 extern crate gltf_importer;
 extern crate gltf_utils;
 
+pub mod vfs;
+pub mod state;
 pub mod error;
 pub mod context;
-pub mod vfs;
+pub mod graphics;
 pub mod texture;
-pub mod state;

@@ -1,12 +1,9 @@
 
-use gfx::traits::FactoryExt;
 use gltf::image::Data;
 use gltf_utils::PrimitiveIterators;
 
 use context::Context;
 use error::{AppResult, AppError};
-use graphics::types as graphic_types;
-use graphics::pipeline::Vertex;
 use texture::Texture;
 
 pub struct SimpleMesh {
@@ -105,10 +102,5 @@ impl SimpleMesh {
                 format!("No Mesh found in {}", gltf_path),
             ))
         }
-    }
-
-    pub fn generate_buffer(&self, ctx: &mut Context) -> AppResult<(graphic_types::GpuBuffer<Vertex>, graphic_types::Slice)> {
-        let mut factory = ctx.gfx.get_factory_clone()?;
-        Ok(factory.create_vertex_buffer_with_slice(self.vertices.as_slice(), self.indices.as_slice()))
     }
 }
