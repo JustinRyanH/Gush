@@ -4,12 +4,10 @@ use std::error::Error;
 use std::string;
 use std::io;
 
+use winit;
+
 use image;
 use gltf_importer;
-
-use gfx_core;
-use glutin;
-use gfx;
 
 /// Handle all possible errors
 #[derive(Debug)]
@@ -23,7 +21,7 @@ pub enum AppError {
     /// VFS Error
     VirtualFilesystemError(String),
     /// Gfx Error
-    GfxError(String)
+    GfxError(String),
 }
 
 impl fmt::Display for AppError {
@@ -61,13 +59,6 @@ impl Error for AppError {
 /// Result Type for Application
 pub type AppResult<T> = Result<T, AppError>;
 
-impl From<glutin::ContextError> for AppError {
-    fn from(e: glutin::ContextError) -> AppError {
-        AppError::InitError(e.to_string())
-    }
-}
-
-
 impl From<io::Error> for AppError {
     fn from(e: io::Error) -> AppError {
         AppError::IoError(e)
@@ -76,72 +67,26 @@ impl From<io::Error> for AppError {
 
 impl From<string::FromUtf8Error> for AppError {
     fn from(e: string::FromUtf8Error) -> AppError {
-        AppError::VirtualFilesystemError(
-            format!("Was able to parse string till {}",
-                    e.utf8_error().valid_up_to())
-        )
-    }
-}
-
-impl From<gfx::shade::core::CreateShaderError> for AppError {
-    fn from(e: gfx::shade::core::CreateShaderError) -> AppError {
-        AppError::GfxError(
-            format!("Shader Creation Error: {:?}", e)
-        )
-    }
-}
-
-impl From<gfx::shade::core::CreateProgramError> for AppError {
-    fn from(e: gfx::shade::core::CreateProgramError) -> AppError {
-        AppError::GfxError(
-            format!("Shader Program Creation Error: {:?}", e)
-        )
-    }
-}
-
-impl From<gfx_core::pso::CreationError> for AppError {
-    fn from(e: gfx_core::pso::CreationError) -> AppError {
-        AppError::GfxError(
-            format!("Creation Error: {:?}", e)
-        )
+        AppError::VirtualFilesystemError(format!(
+            "Was able to parse string till {}",
+            e.utf8_error().valid_up_to()
+        ))
     }
 }
 
 impl From<image::ImageError> for AppError {
     fn from(e: image::ImageError) -> AppError {
-        AppError::VirtualFilesystemError(
-            format!("Error Reading Image: {:?}", e)
-        )
+        AppError::VirtualFilesystemError(format!("Error Reading Image: {:?}", e))
     }
 }
-impl From<gfx::PipelineStateError<String>> for AppError {
-    fn from(e: gfx::PipelineStateError<String>) -> AppError {
-        AppError::GfxError(
-            format!("Error Initilzing Pipeline: {:?}", e)
-        )
-    }
-}
-
-impl From<gfx_core::factory::CombinedError> for AppError {
-    fn from(e: gfx_core::factory::CombinedError) -> AppError {
-        AppError::GfxError(
-            format!("Error creating Texture: {:?}", e)
-        )
-    }
-}
-
 impl From<gltf_importer::Error> for AppError {
     fn from(e: gltf_importer::Error) -> AppError {
-        AppError::VirtualFilesystemError(
-            format!("Error parsing gltf file: {:?}", e)
-        )
+        AppError::VirtualFilesystemError(format!("Error parsing gltf file: {:?}", e))
     }
 }
 
-impl<'a> From<gfx::pso::InitError<&'a str>> for AppError {
-    fn from(e: gfx::pso::InitError<&'a str>) -> AppError {
-        AppError::GfxError(
-            format!("Pipeline Init Error: {:?}", e)
-        )
+impl From<winit::CreationError> for AppError {
+    fn from(e: winit::CreationError) -> AppError {
+        AppError::InitError(format!("Failed to Create Window: {:?}", e))
     }
 }

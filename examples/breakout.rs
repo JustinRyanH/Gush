@@ -1,9 +1,9 @@
 extern crate gush;
 
 
-use gush::context::{ self, Context };
+use gush::context::{self, Context};
 use gush::error::AppResult;
-use gush::state::StateEngine;
+use gush::state::{ self, StateEngine };
 
 const CORNFLOWER_BLUE: [f32; 4] = [0.4, 0.58, 0.93, 1.];
 
@@ -15,7 +15,6 @@ impl StateEngine for Breakout {
         Ok(())
     }
     fn draw(&mut self, ctx: &mut Context) -> AppResult<()> {
-        ctx.gfx.clear(CORNFLOWER_BLUE);
         Ok(())
     }
 }
@@ -25,7 +24,7 @@ fn main() {
 
     let mut breakout = Breakout{};
     let mut ctx = context::Context::from_app_builder(&context::AppConfig::default()).unwrap();
-    if let Err(e) = context::run(&mut ctx, &mut breakout) {
+    if let Err(e) = state::run(&mut ctx, &mut breakout) {
         println!("Error: {}", e);
     } else {
         println!("Game exited cleanly");
